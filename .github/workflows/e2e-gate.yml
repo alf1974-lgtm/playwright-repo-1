@@ -1,0 +1,50 @@
+# e2e-gate.yml
+#
+# PURPOSE
+# -------
+# This workflow exists ONLY to support the Playwright "merge-gate" e2e test in
+# the forge-fe repo (e2e/tests/live/merge-gate.spec.ts). That test verifies the
+# in-app Merge button on the PR card:
+#   - is DISABLED while a PR's checks are still running, and
+#   - becomes ENABLED once they pass.
+#
+# The forge-fe app decides whether a PR is mergeable from its check runs (see
+# apps/forge-fe/src/lib/pr-status.ts#canMerge): a "pending" check blocks merge,
+# a "success" check allows it. So the test needs a real check on the PR that is
+# observably pending for a little while and then succeeds. That is all this job
+# does: sleep briefly (to guarantee a pending window the FE can observe), then
+# exit 0 (success).
+#
+# It performs no build, no deploy, and has no side effects. It runs on every
+# pull request in THIS (fixture) repo. Keep it fast-but-not-instant: the forge-fe
+# PR card polls /api/pr-status every ~15s, so the check must stay pending long
+# enough to be seen before it flips to success.
+#
+# WHERE THIS LIVES
+# ----------------
+# Commit this to the FIXTURE repo (the repo named by E2E_FIXTURE_REPO), NOT to
+# forge-fe. The e2e test opens PRs against the fixture repo, and this check runs
+# on those PRs.
+
+name: e2e-gate
+
+# Run on pull requests so the check attaches to the PR's head commit, which is
+# what the forge-fe PR card reads.
+on:
+  pull_request:
+
+# Only one run per PR branch; cancel superseded runs so rapid pushes don't pile
+# up pending checks.
+concurrency:
+  group: e2e-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wait:
+    runs-on: ubuntu-latest
+    steps:
+      # Stay "pending" long enough for the FE to poll and render the disabled
+      # Merge button, then succeed so the button becomes enabled. ~45s comfortably
+      # exceeds the 15s poll interval plus runner startup jitter. Tune if needed.
+      - name: Hold a pending check, then pass
+        run: sleep 45
